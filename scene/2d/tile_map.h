@@ -113,7 +113,7 @@ private:
 		Cell() { _u64t = 0; }
 	};
 
-	Map<PosKey, Cell> tile_map;
+	//Map<PosKey, Cell> tile_map;
 	List<PosKey> dirty_bitmask;
 
 	struct Quadrant {
@@ -137,7 +137,7 @@ private:
 		Map<PosKey, NavPoly> navpoly_ids;
 		Map<PosKey, Occluder> occluder_instances;
 
-		VSet<PosKey> cells;
+		Vector<Cell> cells;
 
 		void operator=(const Quadrant &q) {
 			pos = q.pos;
@@ -208,6 +208,13 @@ private:
 	int _get_old_cell_size() const { return cell_size.x; }
 
 	_FORCE_INLINE_ Vector2 _map_to_world(int p_x, int p_y, bool p_ignore_ofs = false) const;
+
+	// _get_cell_ptr returns NULL if the cell is INVALID_CELL.
+	_FORCE_INLINE_ const Cell *_get_cell_ptr(int p_x, int p_y) const;
+	_FORCE_INLINE_ Cell *_get_cell_ptr_mut(int p_x, int p_y);
+	//_FORCE_INLINE_ Map<PosKey, Quadrant>::Element *_get_cell_quadrant(int p_cell_x, int p_cell_y) const;
+	// Get the position of the quadrant a cell would be in.
+	_FORCE_INLINE_ PosKey _cell_quadrant_pos(int p_cell_x, int p_cell_y) const;
 
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);

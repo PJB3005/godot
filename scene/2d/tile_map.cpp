@@ -940,56 +940,99 @@ int TileMap::get_cell(int p_x, int p_y) const {
 
 	return E->get().id;
 }
+
+const TileMap::Cell *TileMap::_get_cell_ptr(int p_x, int p_y) const {
+
+	PosKey qk = _cell_quadrant_pos(p_x, p_y);
+
+	const Map<PosKey, Quadrant>::Element *Q = quadrant_map.find(qk);
+
+	if (!Q)
+		return NULL;
+
+	int q_x = Math::wrapi(p_x, 0, _get_quadrant_size());
+	int q_y = Math::wrapi(p_y, 0, _get_quadrant_size());
+
+	const Cell &c = Q->get().cells[q_x * _get_quadrant_size() + q_y];
+
+	if (c.id == INVALID_CELL)
+		return NULL;
+
+	return &c;
+}
+
+TileMap::Cell *TileMap::_get_cell_ptr_mut(int p_x, int p_y) {
+
+	PosKey qk = _cell_quadrant_pos(p_x, p_y);
+
+	Map<PosKey, Quadrant>::Element *Q = quadrant_map.find(qk);
+
+	if (!Q)
+		return NULL;
+
+	int q_x = Math::wrapi(p_x, 0, _get_quadrant_size());
+	int q_y = Math::wrapi(p_y, 0, _get_quadrant_size());
+
+	Cell &c = Q->get().cells[q_x * _get_quadrant_size() + q_y];
+
+	if (c.id == INVALID_CELL)
+		return NULL;
+
+	return &c;
+}
+
+/*
+Map<TileMap::PosKey, TileMap::Quadrant>::Element *TileMap::_get_cell_quadrant(int p_cell_x, int p_cell_y) const {
+	PosKey qk(p_cell_x / _get_quadrant_size(), p_cell_y / _get_quadrant_size());
+}
+*/
+
+TileMap::PosKey TileMap::_cell_quadrant_pos(int p_cell_x, int p_cell_y) const {
+
+	return PosKey(p_cell_x / _get_quadrant_size(), p_cell_y / _get_quadrant_size());
+}
+
 bool TileMap::is_cell_x_flipped(int p_x, int p_y) const {
 
-	PosKey pk(p_x, p_y);
+	const Cell *c = _get_cell_ptr(p_x, p_y);
 
-	const Map<PosKey, Cell>::Element *E = tile_map.find(pk);
-
-	if (!E)
+	if (!c)
 		return false;
 
-	return E->get().flip_h;
+	return c->flip_h;
 }
+
 bool TileMap::is_cell_y_flipped(int p_x, int p_y) const {
 
-	PosKey pk(p_x, p_y);
+	const Cell *c = _get_cell_ptr(p_x, p_y);
 
-	const Map<PosKey, Cell>::Element *E = tile_map.find(pk);
-
-	if (!E)
+	if (!c)
 		return false;
 
-	return E->get().flip_v;
+	return c->flip_v;
 }
+
 bool TileMap::is_cell_transposed(int p_x, int p_y) const {
 
-	PosKey pk(p_x, p_y);
+	const Cell *c = _get_cell_ptr(p_x, p_y);
 
-	const Map<PosKey, Cell>::Element *E = tile_map.find(pk);
-
-	if (!E)
+	if (!c)
 		return false;
 
-	return E->get().transpose;
+	return c->transpose;
 }
 
 void TileMap::set_cell_autotile_coord(int p_x, int p_y, const Vector2 &p_coord) {
 
-	PosKey pk(p_x, p_y);
+	Cell *c = _get_cell_ptr_mut(p_x, p_y);
 
-	const Map<PosKey, Cell>::Element *E = tile_map.find(pk);
-
-	if (!E)
+	if (!c)
 		return;
 
-	Cell c = E->get();
-	c.autotile_coord_x = p_coord.x;
-	c.autotile_coord_y = p_coord.y;
-	tile_map[pk] = c;
+	c->autotile_coord_x = p_coord.x;
+	c->autotile_coord_y = p_coord.y;
 
-	PosKey qk(p_x / _get_quadrant_size(), p_y / _get_quadrant_size());
-	Map<PosKey, Quadrant>::Element *Q = quadrant_map.find(qk);
+	Map<PosKey, Quadrant>::Element *Q = quadrant_map.find(_cell_quadrant_pos(p_x, p_y));
 
 	if (!Q)
 		return;
@@ -999,14 +1042,12 @@ void TileMap::set_cell_autotile_coord(int p_x, int p_y, const Vector2 &p_coord) 
 
 Vector2 TileMap::get_cell_autotile_coord(int p_x, int p_y) const {
 
-	PosKey pk(p_x, p_y);
+	const Cell *c = _get_cell_ptr(p_x, p_y);
 
-	const Map<PosKey, Cell>::Element *E = tile_map.find(pk);
-
-	if (!E)
+	if (!c)
 		return Vector2();
 
-	return Vector2(E->get().autotile_coord_x, E->get().autotile_coord_y);
+	return Vector2(c->autotile_coord_x, c->autotile_coord_y);
 }
 
 void TileMap::_recreate_quadrants() {

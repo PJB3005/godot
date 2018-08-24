@@ -218,13 +218,13 @@ void AudioStreamPlaybackSample::do_resample(const Depth *p_src, AudioFrame *p_ds
 	}
 }
 
-void AudioStreamPlaybackSample::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
+int AudioStreamPlaybackSample::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
 
 	if (!base->data || !active) {
 		for (int i = 0; i < p_frames; i++) {
 			p_buffer[i] = AudioFrame(0, 0);
 		}
-		return;
+		return 0;
 	}
 
 	int len = base->data_bytes;
@@ -389,7 +389,11 @@ void AudioStreamPlaybackSample::mix(AudioFrame *p_buffer, float p_rate_scale, in
 		for (int i = todo_ofs; i < p_frames; i++) {
 			p_buffer[i] = AudioFrame(0, 0);
 		}
+
+		return todo_ofs;
 	}
+
+	return p_frames;
 }
 
 AudioStreamPlaybackSample::AudioStreamPlaybackSample() {

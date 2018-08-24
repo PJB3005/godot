@@ -50,7 +50,10 @@ public:
 	virtual float get_playback_position() const = 0;
 	virtual void seek(float p_time) = 0;
 
-	virtual void mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) = 0;
+	// Returns the amount of frames that were actually written.
+	// For example, if we have to write 10 frames, but there's only 5 left,
+	// this returns 5, so other code is aware there's a gap.
+	virtual int mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) = 0;
 };
 
 class AudioStreamPlaybackResampled : public AudioStreamPlayback {
@@ -74,7 +77,7 @@ protected:
 	virtual float get_stream_sampling_rate() = 0;
 
 public:
-	virtual void mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
+	virtual int mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
 
 	AudioStreamPlaybackResampled() { mix_offset = 0; }
 };
@@ -134,7 +137,7 @@ protected:
 	virtual float get_stream_sampling_rate();
 
 public:
-	virtual void mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
+	virtual int mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
 
 	virtual void start(float p_from_pos = 0.0);
 	virtual void stop();
@@ -200,9 +203,74 @@ public:
 	virtual float get_playback_position() const;
 	virtual void seek(float p_time);
 
-	virtual void mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
+	virtual int mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
 
 	~AudioStreamPlaybackRandomPitch();
 };
+
+class AudioStreamPlaybackSwapBuffer;
+
+class AudioStreamSwapBuffer : public AudioStream {
+	GDCLASS(AudioStreamSwapBuffer, AudioStream)
+	friend class AudioStreamPlaybackSwapBuffer;
+
+public:
+	enum CurrentStream {
+		STREAM_ONE,
+		STREAM_TWO,
+	};
+
+private:
+
+	Ref<AudioStream> stream_one;
+	Ref<AudioStream> stream_two;
+	CurrentStream current_stream;
+
+protected:
+	static void _bind_methods();
+
+public:
+	void set_audio_stream_one(const Ref<AudioStream> &p_audio_stream);
+	Ref<AudioStream> get_audio_stream_one() const;
+
+	void set_audio_stream_two(const Ref<AudioStream> &p_audio_stream);
+	Ref<AudioStream> get_audio_stream_two() const;
+
+	void set_current_stream(const CurrentStream p_current_stream);
+	CurrentStream get_current_stream() const;
+
+	virtual Ref<AudioStreamPlayback> instance_playback();
+	virtual String get_stream_name() const;
+
+	virtual float get_length() const;
+};
+
+class AudioStreamPlaybackSwapBuffer : public AudioStreamPlayback {
+	GDCLASS(AudioStreamPlaybackSwapBuffer, AudioStreamPlayback)
+	friend class AudioStreamSwapBuffer;
+
+	Ref<AudioStreamSwapBuffer> base;
+
+	Ref<AudioStreamPlaybackSwapBuffer> stream_one;
+	Ref<AudioStreamPlaybackSwapBuffer> stream_two;
+
+	bool active;
+
+public:
+	virtual void start(float p_from_pos = 0.0);
+	virtual void stop();
+	virtual bool is_playing() const;
+
+	virtual int get_loop_count() const; //times it looped
+
+	virtual float get_playback_position() const;
+	virtual void seek(float p_time);
+
+	virtual int mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
+
+	AudioStreamPlaybackSwapBuffer();
+};
+
+VARIANT_ENUM_CAST(AudioStreamSwapBuffer::CurrentStream)
 
 #endif // AUDIO_STREAM_H

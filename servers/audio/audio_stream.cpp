@@ -45,7 +45,7 @@ void AudioStreamPlaybackResampled::_begin_resample() {
 	mix_offset = 0;
 }
 
-void AudioStreamPlaybackResampled::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
+int AudioStreamPlaybackResampled::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
 
 	float target_rate = AudioServer::get_singleton()->get_mix_rate();
 
@@ -89,6 +89,9 @@ void AudioStreamPlaybackResampled::mix(AudioFrame *p_buffer, float p_rate_scale,
 			mix_offset -= (INTERNAL_BUFFER_LEN << FP_BITS);
 		}
 	}
+
+	// HIGH FIXME: I have no idea what I'm doing here but this needs to return something proper.
+	return p_frames;
 }
 
 ////////////////////////////////
@@ -165,8 +168,8 @@ void AudioStreamPlaybackMicrophone::_mix_internal(AudioFrame *p_buffer, int p_fr
 	AudioDriver::get_singleton()->unlock();
 }
 
-void AudioStreamPlaybackMicrophone::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
-	AudioStreamPlaybackResampled::mix(p_buffer, p_rate_scale, p_frames);
+int AudioStreamPlaybackMicrophone::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
+	return AudioStreamPlaybackResampled::mix(p_buffer, p_rate_scale, p_frames);
 }
 
 float AudioStreamPlaybackMicrophone::get_stream_sampling_rate() {
@@ -329,16 +332,151 @@ void AudioStreamPlaybackRandomPitch::seek(float p_time) {
 	}
 }
 
-void AudioStreamPlaybackRandomPitch::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
+int AudioStreamPlaybackRandomPitch::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
 	if (playing.is_valid()) {
-		playing->mix(p_buffer, p_rate_scale * pitch_scale, p_frames);
+		return playing->mix(p_buffer, p_rate_scale * pitch_scale, p_frames);
 	} else {
 		for (int i = 0; i < p_frames; i++) {
 			p_buffer[i] = AudioFrame(0, 0);
 		}
+
+		return p_frames;
 	}
 }
 
 AudioStreamPlaybackRandomPitch::~AudioStreamPlaybackRandomPitch() {
 	random_pitch->playbacks.erase(this);
+}
+
+
+// Audio stream swap buffer down here.
+
+Ref<AudioStream> AudioStreamSwapBuffer::get_audio_stream_one() const {
+	return stream_one;
+}
+
+void AudioStreamSwapBuffer::set_audio_stream_one(const Ref<AudioStream> &p_audio_stream) {
+	stream_one = p_audio_stream;
+}
+
+Ref<AudioStream> AudioStreamSwapBuffer::get_audio_stream_two() const {
+	return stream_two;
+}
+
+void AudioStreamSwapBuffer::set_audio_stream_two(const Ref<AudioStream> &p_audio_stream) {
+	stream_two = p_audio_stream;
+}
+
+void AudioStreamSwapBuffer::set_current_stream(const CurrentStream p_current_stream) {
+	current_stream = p_current_stream;
+}
+
+AudioStreamSwapBuffer::CurrentStream AudioStreamSwapBuffer::get_current_stream() const {
+	return current_stream;
+}
+
+String AudioStreamSwapBuffer::get_stream_name() const {
+
+	// TODO: Maybe make this do get_stream_name on the children too?
+	return "SwapBuffer";
+}
+
+float AudioStreamSwapBuffer::get_length() const {
+	return 0;
+}
+
+Ref<AudioStreamPlayback> AudioStreamSwapBuffer::instance_playback() {
+	ERR_FAIL_COND_V(!stream_one.is_valid(), NULL);
+	ERR_FAIL_COND_V(!stream_two.is_valid(), NULL);
+	Ref<AudioStreamPlaybackSwapBuffer> playback;
+	playback.instance();
+
+	playback->base = Ref<AudioStreamPlaybackSwapBuffer>((AudioStreamSwapBuffer *)this);
+	playback->stream_one = stream_one->instance_playback();
+	playback->stream_two = stream_two->instance_playback();
+
+	return playback;
+}
+
+void AudioStreamSwapBuffer::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_audio_stream_one", "stream"), &AudioStreamSwapBuffer::set_audio_stream_one);
+	ClassDB::bind_method(D_METHOD("get_audio_stream_one"), &AudioStreamSwapBuffer::get_audio_stream_one);
+
+	ClassDB::bind_method(D_METHOD("set_audio_stream_two", "stream"), &AudioStreamSwapBuffer::set_audio_stream_two);
+	ClassDB::bind_method(D_METHOD("get_audio_stream_two"), &AudioStreamSwapBuffer::get_audio_stream_two);
+
+	ClassDB::bind_method(D_METHOD("set_current_stream", "current_stream"), &AudioStreamSwapBuffer::set_current_stream);
+	ClassDB::bind_method(D_METHOD("get_current_stream"), &AudioStreamSwapBuffer::get_current_stream);
+
+	BIND_ENUM_CONSTANT(STREAM_ONE);
+	BIND_ENUM_CONSTANT(STREAM_TWO);
+}
+
+void AudioStreamPlaybackSwapBuffer::start(float p_from_pos) {
+	if (base->get_current_stream() == AudioStreamSwapBuffer::STREAM_ONE) {
+		stream_one->start();
+	} else {
+		stream_two->start();
+	}
+	active = true;
+}
+
+void AudioStreamPlaybackSwapBuffer::stop() {
+	stream_one->stop();
+	stream_two->stop();
+	active = false;
+}
+
+
+void AudioStreamPlaybackSwapBuffer::seek(float p_time) {
+	// FIXME: Implement this, maybe?
+	return;
+}
+
+bool AudioStreamPlaybackSwapBuffer::is_playing() const {
+	return active;
+}
+
+int AudioStreamPlaybackSwapBuffer::get_loop_count() const {
+	return 0; // This seems to be completely unused.
+}
+
+float AudioStreamPlaybackSwapBuffer::get_playback_position() const {
+	return 0; // FIXME: Implement this, maybe?
+}
+
+int AudioStreamPlaybackSwapBuffer::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
+	int todo = p_frames;
+	AudioFrame *cur_buffer = p_buffer;
+	while (todo > 0) {
+		Ref<AudioStreamPlayback> cur;
+		bool on_one = base->get_current_stream() == AudioStreamSwapBuffer::STREAM_ONE;
+		if (on_one) {
+			cur = stream_one;
+		} else {
+			cur = stream_two;
+		}
+		int done = cur->mix(cur_buffer, p_rate_scale, todo);
+		todo -= done;
+		cur_buffer += done;
+		if (todo > 0)
+		{
+			cur->stop();
+			if (on_one) {
+				base->set_current_stream(AudioStreamSwapBuffer::STREAM_TWO);
+				stream_two->start();
+			} else {
+				base->set_current_stream(AudioStreamSwapBuffer::STREAM_ONE);
+				stream_one->start();
+			}
+		} else {
+			break;
+		}
+	}
+
+	return p_frames;
+}
+
+AudioStreamPlaybackSwapBuffer::AudioStreamPlaybackSwapBuffer() {
+	active = false;
 }

@@ -75,7 +75,7 @@ public:
 	virtual float get_playback_position() const;
 	virtual void seek(float p_time);
 
-	virtual void mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
+	virtual int mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames);
 
 	AudioStreamPlaybackSample();
 };
